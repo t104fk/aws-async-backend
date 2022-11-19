@@ -8,6 +8,8 @@ export type Prompt = {
 export type PromptRecord = {
   id: string;
   payload: Prompt;
+  gsi1pk?: string;
+  userId?: string;
   webhook_completed?: string;
 };
 export type Predication = {

@@ -32,7 +32,7 @@ export const consume = async (event: DynamoDBStreamEvent) => {
         // TODO: updatedAt
         Item: {
           ...predicated,
-          promptId: record.id,
+          gsi1pk: record.userId,
         },
       })
       .promise();
@@ -59,6 +59,7 @@ export const produce = async (event: APIGatewayProxyEvent) => {
         id,
         payload,
         webhook_completed: webhook,
+        userId: "user#b9233c5d-9ed0-41bc-8884-bdddea1d31aa",
       },
     })
     .promise();
