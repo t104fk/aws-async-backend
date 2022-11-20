@@ -7,6 +7,7 @@ import { RestApiEndpointStack } from "./restapi-endpoint-stack";
 import { DynamoDBAsyncHandlerStack } from "./dynamodb-async-handler-stack";
 import { SQSAsyncHandlerStack } from "./sqs-async-handler-stack";
 import { DynamoDBStack } from "./dynamodb-stack";
+import { WebSocketStack } from "./websocket-stack";
 
 export class AwsAsyncBackendStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -19,8 +20,13 @@ export class AwsAsyncBackendStack extends Stack {
 
     const dynamodbStack = new DynamoDBStack(this, "DynamoDBStack");
 
-    const webSocket = new WebhookStack(this, "WebhookStack", {
+    const webSocket = new WebSocketStack(this, "WebSocketStack", {
       table: dynamodbStack.table,
+    });
+
+    const webhook = new WebhookStack(this, "WebhookStack", {
+      table: dynamodbStack.table,
+      downstream: webSocket.handler,
     });
 
     const replicateVersion = new CfnParameter(this, "replicateVersion", {
@@ -38,7 +44,7 @@ export class AwsAsyncBackendStack extends Stack {
       "DynamoDBAsyncHandlerStack",
       {
         table: dynamodbStack.table,
-        store: webSocket.store,
+        store: webhook.store,
         replicateVersion,
         replicateToken,
       }

@@ -1,8 +1,8 @@
 import axios from "axios";
-import { Predication, Prompt, PromptRecord } from "./domain";
+import { Predication, Prompt, PredicationRecord } from "./domain";
 
 const URL = "https://api.replicate.com/v1/predictions";
-export const generate = async (record: PromptRecord) => {
+export const generate = async (record: PredicationRecord) => {
   return axios.post<Predication>(
     URL,
     {

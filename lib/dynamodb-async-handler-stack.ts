@@ -56,24 +56,23 @@ export class DynamoDBAsyncHandlerStack extends Construct {
       },
     });
 
-    dynamoConsumer.addToRolePolicy(
-      new PolicyStatement({
-        actions: [
-          "dynamodb:GetRecords",
-          "dynamodb:GetShardIterator",
-          "dynamodb:DescribeStream",
-          "dynamodb:ListStreams",
-          "dynamodb:PutItem",
-        ],
-        resources: [table.tableStreamArn!],
-      })
-    );
-    dynamoConsumer.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["dynamodb:PutItem"],
-        resources: [table.tableArn!],
-      })
-    );
+    // dynamoConsumer.addToRolePolicy(
+    //   new PolicyStatement({
+    //     actions: [
+    //       "dynamodb:GetRecords",
+    //       "dynamodb:GetShardIterator",
+    //       "dynamodb:DescribeStream",
+    //       "dynamodb:ListStreams",
+    //     ],
+    //     resources: [table.tableStreamArn!],
+    //   })
+    // );
+    // dynamoConsumer.addToRolePolicy(
+    //   new PolicyStatement({
+    //     actions: ["dynamodb:PutItem"],
+    //     resources: [table.tableArn!],
+    //   })
+    // );
 
     dynamoConsumer.addEventSourceMapping("AsyncDynamoConsumer", {
       eventSourceArn: table.tableStreamArn,
@@ -81,5 +80,7 @@ export class DynamoDBAsyncHandlerStack extends Construct {
       startingPosition: lambda.StartingPosition.LATEST,
       retryAttempts: 3,
     });
+    props.table.grantReadWriteData(dynamoConsumer);
+    props.table.grantStreamRead(dynamoConsumer);
   }
 }

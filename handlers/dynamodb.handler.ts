@@ -1,17 +1,18 @@
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { APIGatewayProxyEvent, DynamoDBStreamEvent } from "aws-lambda";
 import { createResponse } from "../utils/response";
-import { Prompt, PromptId, PromptRecord } from "./domain";
+import { ConnectionId } from "./connection.handler";
+import { PredicationId, PredicationRecord, Prompt } from "./domain";
 import { getClient, TABLE_NAME } from "./dynamodb";
 import { generate } from "./replicate";
-import { getWebhookApiUrl } from "./ssm";
+import { getStringParameter } from "./ssm";
 
 const client = getClient();
 
 const filterPromptInsertRecord = (event: DynamoDBStreamEvent) =>
   event.Records.filter((r) => r.eventName === "INSERT")
-    .map((r) => unmarshall(r.dynamodb?.NewImage!) as PromptRecord)
-    .filter((r) => r.id.startsWith(PromptId.prefix));
+    .map((r) => unmarshall(r.dynamodb?.NewImage!) as PredicationRecord)
+    .filter((r) => r.pk.startsWith(PredicationId.prefix));
 
 export const consume = async (event: DynamoDBStreamEvent) => {
   console.log(JSON.stringify(event));
@@ -26,40 +27,62 @@ export const consume = async (event: DynamoDBStreamEvent) => {
 
     const predicated = predication.data;
 
+    // TODO: webhookが勝つ可能性ある？
     await client
-      .put({
+      .update({
         TableName: TABLE_NAME,
         // TODO: updatedAt
-        Item: {
-          ...predicated,
-          gsi1pk: record.userId,
+        Key: {
+          pk: record.pk,
+        },
+        UpdateExpression: "set #body = :body",
+        ExpressionAttributeNames: { "#body": "body" },
+        ExpressionAttributeValues: {
+          ":body": predicated,
         },
       })
       .promise();
   }
 };
 
+type RequestPayload = {
+  connectionId: string;
+  // TODO: from header?
+  userId: string;
+  payload: Prompt;
+};
+
 export const produce = async (event: APIGatewayProxyEvent) => {
+  console.log(JSON.stringify(event));
+
   if (event.body == null) {
     return createResponse({
       statusCode: 400,
       body: { message: "invalid body" },
     });
   }
-  const payload = JSON.parse(event.body);
-  const id = PromptId.generate();
+  const body = JSON.parse(event.body);
 
-  const webhook = `${await getWebhookApiUrl()}webhook`;
+  const connectionId = body.connectionId;
+  // TODO: temporaryUser, parse from body
+  const userId = body.userId;
+  const predicationId = PredicationId.generate();
 
-  // TODO: createdAt
+  const webhook = `${await getStringParameter(
+    "WebhookApiUrl"
+  )}webhook?connectionId=${encodeURIComponent(
+    connectionId
+  )}&predicationId=${encodeURIComponent(PredicationId.extract(predicationId))}`;
+
   await client
     .put({
       TableName: TABLE_NAME,
       Item: {
-        id,
-        payload,
+        pk: predicationId,
+        gsi1pk: userId,
+        payload: body.payload,
         webhook_completed: webhook,
-        userId: "user#b9233c5d-9ed0-41bc-8884-bdddea1d31aa",
+        createdAt: new Date().getTime(),
       },
     })
     .promise();
@@ -67,6 +90,6 @@ export const produce = async (event: APIGatewayProxyEvent) => {
   // TODO: error handling
   return createResponse({
     statusCode: 200,
-    body: { message: "success" },
+    body: { predicationId: PredicationId.extract(predicationId) },
   });
 };
