@@ -32,19 +32,8 @@ export class DynamoDBAsyncHandlerStack extends Construct {
         TABLE_NAME: table.tableName,
       },
     });
-
-    this.producer.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem"],
-        resources: [table.tableArn],
-      })
-    );
-    this.producer.addToRolePolicy(
-      new PolicyStatement({
-        actions: ["ssm:GetParameter"],
-        resources: [store.parameterArn],
-      })
-    );
+    table.grantReadWriteData(this.producer);
+    // store.grantRead(this.producer);
 
     const dynamoConsumer = new NodejsFunction(this, "dynamoConsumer", {
       entry: "handlers/dynamodb.handler.ts",
@@ -56,31 +45,14 @@ export class DynamoDBAsyncHandlerStack extends Construct {
       },
     });
 
-    // dynamoConsumer.addToRolePolicy(
-    //   new PolicyStatement({
-    //     actions: [
-    //       "dynamodb:GetRecords",
-    //       "dynamodb:GetShardIterator",
-    //       "dynamodb:DescribeStream",
-    //       "dynamodb:ListStreams",
-    //     ],
-    //     resources: [table.tableStreamArn!],
-    //   })
-    // );
-    // dynamoConsumer.addToRolePolicy(
-    //   new PolicyStatement({
-    //     actions: ["dynamodb:PutItem"],
-    //     resources: [table.tableArn!],
-    //   })
-    // );
-
     dynamoConsumer.addEventSourceMapping("AsyncDynamoConsumer", {
       eventSourceArn: table.tableStreamArn,
       batchSize: 1,
       startingPosition: lambda.StartingPosition.LATEST,
       retryAttempts: 3,
     });
-    props.table.grantReadWriteData(dynamoConsumer);
-    props.table.grantStreamRead(dynamoConsumer);
+    table.grantReadWriteData(dynamoConsumer);
+    table.grantStreamRead(dynamoConsumer);
+    store.grantRead(dynamoConsumer);
   }
 }

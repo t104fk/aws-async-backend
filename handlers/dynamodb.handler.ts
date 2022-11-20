@@ -1,11 +1,11 @@
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { APIGatewayProxyEvent, DynamoDBStreamEvent } from "aws-lambda";
 import { createResponse } from "../utils/response";
-import { ConnectionId } from "./connection.handler";
 import { PredicationId, PredicationRecord, Prompt } from "./domain";
 import { getClient, TABLE_NAME } from "./dynamodb";
 import { generate } from "./replicate";
-import { getStringParameter } from "./ssm";
+import { request } from "./ImageGenerationService";
+import { getWebhookUrl } from "./webhook.handler";
 
 const client = getClient();
 
@@ -21,7 +21,8 @@ export const consume = async (event: DynamoDBStreamEvent) => {
   if (!records.length) return;
 
   for (const record of records) {
-    const predication = await generate(record);
+    const webhook = await getWebhookUrl(record.connectionId, record.pk);
+    const predication = await generate(record, webhook);
     console.log("generated", predication);
     if (predication.status !== 201) return;
 
@@ -45,13 +46,6 @@ export const consume = async (event: DynamoDBStreamEvent) => {
   }
 };
 
-type RequestPayload = {
-  connectionId: string;
-  // TODO: from header?
-  userId: string;
-  payload: Prompt;
-};
-
 export const produce = async (event: APIGatewayProxyEvent) => {
   console.log(JSON.stringify(event));
 
@@ -68,24 +62,7 @@ export const produce = async (event: APIGatewayProxyEvent) => {
   const userId = body.userId;
   const predicationId = PredicationId.generate();
 
-  const webhook = `${await getStringParameter(
-    "WebhookApiUrl"
-  )}webhook?connectionId=${encodeURIComponent(
-    connectionId
-  )}&predicationId=${encodeURIComponent(PredicationId.extract(predicationId))}`;
-
-  await client
-    .put({
-      TableName: TABLE_NAME,
-      Item: {
-        pk: predicationId,
-        gsi1pk: userId,
-        payload: body.payload,
-        webhook_completed: webhook,
-        createdAt: new Date().getTime(),
-      },
-    })
-    .promise();
+  await request({ connectionId, userId, payload: body.payload });
 
   // TODO: error handling
   return createResponse({

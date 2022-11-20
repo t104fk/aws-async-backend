@@ -1,18 +1,19 @@
 import { ApiGatewayManagementApi } from "aws-sdk";
 import { createResponse } from "../utils/response";
 import { ConnectionId } from "./connection.handler";
-import { PredicationId, PredicationRecord } from "./domain";
+import { PredicationId, PredicationRecord, Prompt } from "./domain";
 import { getClient, TABLE_NAME } from "./dynamodb";
+import { request } from "./ImageGenerationService";
 import { getStringParameter } from "./ssm";
 
 const client = getClient();
 
-type RequestPayload = {
+type InternalRequestPayload = {
   connectionId: string;
   predicationId: string;
 };
 
-export const notify = async (event: RequestPayload) => {
+export const notify = async (event: InternalRequestPayload) => {
   console.log(event);
 
   if (event == null) {
@@ -73,10 +74,44 @@ export const notify = async (event: RequestPayload) => {
   });
 };
 
-// const getEndpoint = async (connectionId: string) =>
-//   `${await getStringParameter(
-//     "websocketApiEndpoint"
-//   )}/@connections/${connectionId}`;
+export const receive = async (event: WebSocketEvent) => {
+  console.log(event);
+
+  if (event == null) {
+    return createResponse({
+      statusCode: 400,
+      body: { message: "Empty request body." },
+    });
+  }
+  const { requestContext, body } = event;
+  const { connectionId } = requestContext;
+  const userId = "user#b9233c5d-9ed0-41bc-8884-bdddea1d31aa";
+  const _body = JSON.parse(body);
+
+  const saved = await request({
+    connectionId,
+    userId,
+    payload: _body.payload,
+  });
+
+  const endpoint = await getStringParameter("websocketApiEndpoint");
+  const apiGateway = new ApiGatewayManagementApi({ endpoint });
+
+  const params: ApiGatewayManagementApi.PostToConnectionRequest = {
+    Data: JSON.stringify({ predicationId: saved.Item?.pk }),
+    ConnectionId: connectionId,
+  };
+  try {
+    await apiGateway.postToConnection(params).promise();
+  } catch (err) {
+    console.error(err);
+  }
+
+  return createResponse({
+    statusCode: 200,
+    body: { message: "success" },
+  });
+};
 
 export const connect = async (event: WebSocketEvent) => {
   console.log("connect event", event);
@@ -129,7 +164,7 @@ export type WebSocketEvent = {
   };
   multiValueHeaders: { [key: string]: string[] };
   isBase64Encoded: boolean;
-  // body: RequestPayload;
+  body: string;
 };
 
 // export type WebSocketEvent = {

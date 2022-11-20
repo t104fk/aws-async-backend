@@ -20,7 +20,7 @@ export class WebSocketStack extends Construct {
     const { table } = props;
 
     const connect = new NodejsFunction(this, "websocketConnect", {
-      entry: "handlers/notifier.handler.ts",
+      entry: "handlers/websocket.handler.ts",
       handler: "connect",
       environment: {
         TABLE_NAME: table.tableName,
@@ -29,7 +29,7 @@ export class WebSocketStack extends Construct {
 
     table.grantWriteData(connect);
     const disconnect = new NodejsFunction(this, "websocketDisconnect", {
-      entry: "handlers/notifier.handler.ts",
+      entry: "handlers/websocket.handler.ts",
       handler: "disconnect",
       environment: {
         TABLE_NAME: table.tableName,
@@ -63,7 +63,7 @@ export class WebSocketStack extends Construct {
     const endpoint = `https://${apiId}.execute-api.${region}.amazonaws.com`;
 
     this.handler = new NodejsFunction(this, "predicationNotifier", {
-      entry: "handlers/notifier.handler.ts",
+      entry: "handlers/websocket.handler.ts",
       handler: "notify",
       environment: {
         TABLE_NAME: table.tableName,
@@ -72,27 +72,51 @@ export class WebSocketStack extends Construct {
     table.grantReadData(this.handler);
     webSocketApi.grantManageConnections(this.handler);
     const accountId = webSocketApi.env.account;
+
+    const apiArn = `arn:aws:execute-api:${region}:${accountId}:${apiId}/${stage}/*`;
     this.handler.addToRolePolicy(
       new PolicyStatement({
         actions: ["execute-api:Invoke"],
-        resources: [
-          `arn:aws:execute-api:${region}:${accountId}:${apiId}/${stage}/*`,
-        ],
+        resources: [apiArn],
       })
     );
 
     const store = new ssm.StringParameter(this, "WebSocketApiParameter", {
       parameterName: "websocketApiEndpoint",
-      // stringValue: `${webSocketApi.apiEndpoint}/${stage}`,
       stringValue: `${endpoint}/${stage}`,
     });
     store.grantRead(this.handler);
 
-    webSocketApi.addRoute("send-messages", {
+    const receiver = new NodejsFunction(this, "receiver", {
+      entry: "handlers/websocket.handler.ts",
+      handler: "receive",
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+    table.grantReadWriteData(receiver);
+    store.grantRead(receiver);
+    webSocketApi.grantManageConnections(receiver);
+    receiver.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["execute-api:Invoke"],
+        resources: [apiArn],
+      })
+    );
+
+    webSocketApi.addRoute("messages", {
       integration: new WebSocketLambdaIntegration(
         "SendMessageIntegration",
-        this.handler
+        // this.handler
+        receiver
       ),
     });
+
+    // webSocketApi.addRoute("receive", {
+    //   integration: new WebSocketLambdaIntegration(
+    //     "ReceiveMessageIntegration",
+    //     receiver
+    //   ),
+    // });
   }
 }

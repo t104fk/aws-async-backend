@@ -10,7 +10,8 @@ export type PredicationRecord = {
   payload: Prompt;
   gsi1pk?: string;
   userId?: string;
-  webhook_completed?: string;
+  // TODO: make this option, and support to skip postToConnection
+  connectionId: string;
   body: Predication;
 };
 export type Predication = {

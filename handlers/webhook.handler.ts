@@ -3,6 +3,7 @@ import { createResponse } from "../utils/response";
 import { Predication, PredicationId, PredicationRecord } from "./domain";
 import { getClient, TABLE_NAME } from "./dynamodb";
 import { Lambda } from "aws-sdk";
+import { getStringParameter } from "./ssm";
 
 const client = getClient();
 const lambda = new Lambda();
@@ -74,4 +75,15 @@ export const webhook = async (event: APIGatewayProxyEvent) => {
     statusCode: 200,
     body: { message: "success" },
   });
+};
+
+export const getWebhookUrl = async (
+  connectionId: string,
+  predicationId: string
+) => {
+  return `${await getStringParameter(
+    "WebhookApiUrl"
+  )}webhook?connectionId=${encodeURIComponent(
+    connectionId
+  )}&predicationId=${encodeURIComponent(PredicationId.extract(predicationId))}`;
 };
